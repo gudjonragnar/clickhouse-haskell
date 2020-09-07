@@ -100,7 +100,7 @@ manualTCP = do
         Left _ -> return ()
         Right conn -> do
             print "connected"
-            sendQuery conn "select * from tande" Nothing
+            sendQuery conn "select * from universal" Nothing
             sendData conn "" Nothing
             case conn of
                 TCPConnection {tcpSocket=sock}-> do
@@ -189,4 +189,44 @@ insertTest2 = do
     print "conn"
     closeClient conn
 
-main = manualTCP
+insertTest3 :: IO()
+insertTest3 = do
+    conn <- defaultClient
+    s <- ClickHouseDriver.Core.insertMany conn "INSERT INTO tande VALUES"
+            [
+                [CKString "ggo", CKTuple $ V.fromList [CKInt16 0, CKString "hah", CKString "oxo", CKInt8 (-11)], CKString "hello"],
+                [CKString "ggo", CKTuple $ V.fromList [CKInt16 0, CKString "hah", CKString "oxo", CKInt8 (-11)], CKString "hello"],
+                [CKString "gfo", CKTuple $ V.fromList [CKInt16 0, CKString "hah", CKString "oxo", CKInt8 (-11)], CKString "world"]
+            ]
+    q <- execute "SELECT * FROM tande" conn
+    print q
+    print "conn"
+    closeClient conn
+
+insertTest4 :: IO()
+insertTest4 = do
+    conn <- defaultClient
+    s <- ClickHouseDriver.Core.insertMany conn "INSERT INTO array_table VALUES"
+            [
+                [CKNull, CKArray $ V.fromList [CKArray $ V.fromList [CKInt16 1], CKArray $ V.fromList [CKInt16 2], CKArray $ V.fromList [CKInt16 3]]],
+                [CKNull, CKArray $ V.fromList [CKArray $ V.fromList [CKInt16 1, CKInt16 2], CKArray $ V.fromList [CKInt16 3, CKInt16 4], CKArray $ V.fromList [CKInt16 5, CKInt16 6]]]
+            ]
+    q <- execute "SELECT * FROM array_table" conn
+    print q
+    print "conn"
+    closeClient conn
+
+insertTest5 :: IO()
+insertTest5 = do
+    conn <- defaultClient
+    s <- ClickHouseDriver.Core.insertMany conn "INSERT INTO array_nulls VALUES"
+            [
+                [CKNull, CKArray $ V.fromList [CKArray $ V.fromList [CKString "ABC", CKNull, CKString "XYZ"], CKArray $ V.fromList [CKString "DEF"], CKArray $ V.fromList [CKString "DEF"]]],
+                [CKNull, CKArray $ V.fromList [CKArray $ V.fromList [CKString "Clickhouse"],  CKArray $ V.fromList [CKNull,CKNull]]]
+            ]
+    q <- execute "SELECT * FROM array_nulls" conn
+    print q
+    print "conn"
+    closeClient conn
+
+main = insertTest5

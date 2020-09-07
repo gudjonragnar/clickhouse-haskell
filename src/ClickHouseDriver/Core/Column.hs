@@ -20,7 +20,7 @@ import Data.Vector (Vector, (!), (!?))
 import qualified Data.Vector as V
 import Data.Word
 import qualified Data.List as List
-import qualified Data.Map.Strict as Map
+import qualified Data.HashMap.Strict as Map
 import Data.Time (Day, addDays, fromGregorian, toGregorian, diffDays)
 import Network.IP.Addr (IP4(..), IP6(..))
 --Debug 
@@ -63,23 +63,25 @@ writeColumn :: Context
              ->Vector ClickhouseType
              -- ^ items
              ->IOWriter Builder
-writeColumn ctx col_name "String" items = writeStringColumn col_name items
-writeColumn ctx col_name fix items
-  | "FixedString(" `isPrefixOf` fix = do
-    let l = BS.length fix
-    let Just (len, _) = readInt $ BS.take(l - 13) (BS.drop 12 fix)
+writeColumn ctx col_name cktype items
+  | "String" `isPrefixOf` cktype = writeStringColumn col_name items
+  | "FixedString(" `isPrefixOf` cktype = do
+    let l = BS.length cktype
+    let Just (len, _) = readInt $ BS.take(l - 13) (BS.drop 12 cktype)
     writeFixedLengthString col_name (fromIntegral len) items
-writeColumn ctx col_name int items
-  | "Int" `isPrefixOf` int || "UInt" `isPrefixOf` int = do
-    let Just (indicator, _) = readInt $ BS.drop 3 int
+  | "Int" `isPrefixOf` cktype || "UInt" `isPrefixOf` cktype =  do
+    let Just (indicator, _) = readInt $ BS.drop 3 cktype
     writeIntColumn indicator col_name items
-writeColumn ctx col_name null items
-  | "Nullable(" `isPrefixOf` null = do
-    let l = BS.length null
-    let inner = BS.take (l - 10) (BS.drop 9 null)
+  | "Nullable(" `isPrefixOf` cktype = do
+    let l = BS.length cktype
+    let inner = BS.take (l - 10) (BS.drop 9 cktype)
     writeNullsMap items
     writeColumn ctx col_name inner items
-writeColumn _ _ _ _ = undefined
+  | "Tuple" `isPrefixOf` cktype = writeTuple ctx col_name cktype items
+  | "Enum" `isPrefixOf` cktype = writeEnum col_name cktype items
+  | "Array" `isPrefixOf` cktype = writeArray ctx col_name cktype items
+
+
 ---------------------------------------------------------------------------------------------
 readFixed :: Int -> ByteString -> Reader (Vector ClickhouseType)
 readFixed n_rows spec = do
@@ -256,7 +258,10 @@ readLowCadinality n spec = do
     l = BS.length spec
 
 writeLowCardinality :: ByteString->ByteString->Vector ClickhouseType->IOWriter Builder
-writeLowCardinality col_name spec items = undefined
+writeLowCardinality col_name spec items = do
+  let inner = BS.take(BS.length spec - 16) (BS.drop 15 spec)
+  
+  undefined
 ---------------------------------------------------------------------------------------------------------------------------------
 {-
           Informal description for this config:
@@ -355,7 +360,7 @@ writeArray ctx col_name spec items = do
           )
           0
           items
-  V.mapM_ (writeBinaryInt64 . fromIntegral) lens
+  V.mapM_ (writeBinaryInt64 . fromIntegral) (V.drop 1 lens)
   let innerSpec = BS.take (BS.length spec - 7) (BS.drop 6 spec)
   let innerVector = V.map (\case CKArray xs -> xs) items
   let flattenVector = 
@@ -426,7 +431,7 @@ writeEnum col_name spec items = do
       prespecs = getSpecs innerSpec
       specs =
         (\(name, Just (n, _)) -> (name, n))
-          <$> ((\[x, y] -> (x, readInt y)) . BS.splitWith (== 61) <$> prespecs) --61 is '='
+          <$> ((\[x, y] -> (x, readInt y)) . BS.splitWith (== 61) . BS.filter (/=39) <$> prespecs) --61 is '='
       specsMap = Map.fromList specs
   V.mapM_
     ( \case
@@ -514,7 +519,19 @@ readSimpleAggregateFunction n_rows spec = do
    let l = BS.length spec
    let [func, cktype] = getSpecs $ BS.take(l - 25) (BS.drop 24 spec)
    readColumn n_rows cktype
----------------------------------------------------------------------------------------------
+----------------------------------------------------------------------------------------------
+--TODO implement UUID parser.
+readUUID :: Int->Reader (Vector ClickhouseType)
+readUUID n_rows = do
+  items128 <- V.replicateM n_rows $ do
+      hi <- readBinaryUInt64
+      lo <- readBinaryUInt64
+      return (hi, lo)
+  undefined
+
+writeUUID :: ByteString->Vector ClickhouseType->IOWriter Builder
+writeUUID col_name items = undefined 
+----------------------------------------------------------------------------------------------
 ---Helpers 
 
 -- | Get rid of commas and spaces
@@ -532,6 +549,7 @@ transpose cdata =
 
 typeMismatchError :: ByteString->String
 typeMismatchError col_name = "Type mismatch in the column " ++ (show col_name)
+
 -- | print in format
 {-
 format :: Vector (Vector ClickhouseType) -> ByteString
