@@ -3,9 +3,16 @@
 --
 -- This source code is distributed under the terms of a MIT license,
 -- found in the LICENSE file.
----------------------------------------------------------------------
+
+----------------------------------------------------------------------
+
 
 {-# LANGUAGE FlexibleContexts #-}
+
+-- | This module provides functions for handling data streaming communications.
+--   For internal use only.
+-- 
+
 module ClickHouseDriver.Core.Block
   ( BlockInfo (..),
     writeInfo,

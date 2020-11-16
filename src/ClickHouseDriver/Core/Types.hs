@@ -7,6 +7,11 @@
 {-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DeriveGeneric     #-}
+
+-- | Implementation of data types for internal use  Most users should
+-- import "ClickHouseDriver.Core" instead.
+--
+
 module ClickHouseDriver.Core.Types
   ( ServerInfo (..),
     TCPConnection (..),
@@ -39,8 +44,7 @@ module ClickHouseDriver.Core.Types
     ConnParams(..),
     setClientInfo,
     setClientSetting,
-    setServerInfo,
-    writeSettings
+    setServerInfo
   )
 where
 
@@ -48,7 +52,7 @@ import qualified ClickHouseDriver.Core.Defines      as Defines
 import ClickHouseDriver.IO.BufferedReader
     ( Reader, readVarInt, readBinaryUInt8 )
 import ClickHouseDriver.IO.BufferedWriter
-    ( Writer, writeVarUInt, writeBinaryUInt8, writeBinaryInt32 )
+    ( Writer, writeVarUInt, writeBinaryUInt8, writeBinaryInt32)
 import           Data.ByteString                    (ByteString)
 import Data.ByteString.Builder ( Builder )
 import Data.Default.Class ( Default(..) )
@@ -62,8 +66,8 @@ import           Network.Socket                     (SockAddr, Socket)
 
 -----------------------------------------------------------
 data BlockInfo = Info
-  { is_overflows :: Bool,
-    bucket_num :: Int32
+  { is_overflows :: !Bool,
+    bucket_num :: {-# UNPACK #-} !Int32
   } 
   deriving Show
 
@@ -129,13 +133,20 @@ setServerInfo server_info tcp@TCPConnection{context=ctx}
 ---------------------------------------------------------
 data TCPConnection = TCPConnection
   { tcpHost :: {-# UNPACK #-} !ByteString,
+    -- ^ host name, default = "localhost" 
     tcpPort :: {-# UNPACK #-} !ByteString,
+    -- ^ port number, default = "8123"
     tcpUsername :: {-# UNPACK #-} !ByteString,
+    -- ^ username, default = "default"
     tcpPassword :: {-# UNPACK #-} !ByteString,
-    tcpSocket :: {-# UNPACK #-}  !Socket,
-    tcpSockAdrr :: {-# UNPACK #-} !SockAddr,
+    -- ^ password, dafault = ""
+    tcpSocket :: !Socket,
+    -- ^ socket for communication
+    tcpSockAdrr :: !SockAddr,
     context :: !Context,
+    -- ^ server and client informations
     tcpCompression :: {-# UNPACK #-} !Word
+    -- ^ should the data be compressed or not. Not applied yet. 
   }
   deriving (Show)
 
@@ -159,7 +170,7 @@ data ClientInfo = ClientInfo
     initial_query_id :: {-# UNPACK #-} !ByteString,
     initial_address :: {-# UNPACK #-} !ByteString,
     quota_key :: {-# UNPACK #-} !ByteString,
-    query_kind :: {-#UNPACK#-} ! QueryKind
+    query_kind :: QueryKind
   }
   deriving (Show)
 
@@ -185,9 +196,9 @@ setClientInfo client_info tcp@TCPConnection{context=ctx}
 -------------------------------------------------------------------
 data ClientSetting 
   = ClientSetting {
-      insert_block_size :: Word,
-      strings_as_bytes :: Bool,
-      strings_encoding :: ByteString
+      insert_block_size ::{-# UNPACK #-} !Word,
+      strings_as_bytes :: !Bool,
+      strings_encoding ::{-# UNPACK #-} !ByteString
   }
   deriving Show
 
@@ -195,9 +206,6 @@ setClientSetting :: Maybe ClientSetting->TCPConnection->TCPConnection
 setClientSetting client_setting tcp@TCPConnection{context=ctx} 
   = tcp{context=ctx{client_setting=client_setting}}
 
-writeSettings :: ClientSetting->Writer Builder
-writeSettings ClientSetting{insert_block_size,strings_as_bytes,strings_encoding} = do
-  writeVarUInt insert_block_size
 -------------------------------------------------------------------
 data Interface = TCP | HTTP
   deriving (Show, Eq)
@@ -213,11 +221,11 @@ data Context = Context
   deriving Show
 
 data Packet
-  = Block {queryData :: Block}
-  | Progress {prog :: Progress}
-  | StreamProfileInfo {profile :: BlockStreamProfileInfo}
-  | MultiString (ByteString, ByteString)
-  | ErrorMessage String
+  = Block {queryData :: !Block}
+  | Progress {prog :: !Progress}
+  | StreamProfileInfo {profile :: !BlockStreamProfileInfo}
+  | MultiString !(ByteString, ByteString)
+  | ErrorMessage !String
   | Hello
   | EndOfStream
   deriving (Show)
@@ -263,9 +271,9 @@ data BlockStreamProfileInfo = ProfileInfo
   { number_rows :: {-# UNPACK #-} !Word,
     blocks :: {-# UNPACK #-} !Word,
     number_bytes :: {-# UNPACK #-} !Word,
-    applied_limit :: {-# UNPACK #-} !Bool,
+    applied_limit :: !Bool,
     rows_before_limit :: {-# UNPACK #-} !Word,
-    calculated_rows_before_limit :: {-# UNPACK #-} !Bool
+    calculated_rows_before_limit :: !Bool
   }
   deriving Show
 
@@ -286,8 +294,8 @@ readBlockStreamProfileInfo = do
   return $ ProfileInfo rows blocks bytes applied_limit rows_before_limit calculated_rows_before_limit
 -----------------------------------------------------------------------
 data QueryInfo = QueryInfo 
- { profile_info :: {-# UNPACK #-} !BlockStreamProfileInfo,
-   progress :: {-# UNPACK #-} !Progress,
+ { profile_info :: !BlockStreamProfileInfo,
+   progress :: !Progress,
    elapsed :: {-# UNPACK #-} !Word
  } deriving Show
 
@@ -295,16 +303,16 @@ instance Default QueryInfo where
   def = defaultQueryInfo
 
 storeProfile :: QueryInfo->BlockStreamProfileInfo->QueryInfo
-storeProfile (QueryInfo _ progress elapsed) newprofile 
-              = QueryInfo newprofile progress elapsed
+storeProfile (QueryInfo _ progress elapsed) new_profile 
+              = QueryInfo new_profile progress elapsed
 
 storeProgress :: QueryInfo->Progress->QueryInfo
-storeProgress (QueryInfo profile progress elapsed) newprogress 
-              = QueryInfo profile (increment progress newprogress) elapsed
+storeProgress (QueryInfo profile progress elapsed) new_progress 
+              = QueryInfo profile (increment progress new_progress) elapsed
 
 storeElasped :: QueryInfo->Word->QueryInfo
-storeElasped (QueryInfo profile progress _) newelapsed
-              = QueryInfo profile progress newelapsed
+storeElasped (QueryInfo profile progress _) new_elapsed
+              = QueryInfo profile progress new_elapsed
 
 defaultQueryInfo :: QueryInfo
 defaultQueryInfo = 
@@ -315,8 +323,8 @@ defaultQueryInfo =
   }
 -------------------------------------------------------------------------
 data CKResult = CKResult
- { query_result ::  Vector (Vector ClickhouseType),
-   query_info :: {-# UNPACK #-} !QueryInfo
+ { query_result :: Vector (Vector ClickhouseType),
+   query_info :: !QueryInfo
  }
  deriving Show
 -------------------------------------------------------------------------

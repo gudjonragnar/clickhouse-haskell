@@ -3,7 +3,8 @@
 --
 -- This source code is distributed under the terms of a MIT license,
 -- found in the LICENSE file.
-
+-------------------------------------------------------------------------------
+-- This module provides implementation of Connection pool for TCP network
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE NamedFieldPuns #-}
 module ClickHouseDriver.Core.Pool 
@@ -37,10 +38,15 @@ instance Default ConnParams where
       ,database'    = _DEFAULT_DATABASE
     }
 
+-- | Create connection pool
 createConnectionPool :: ConnParams
+                      -- ^ parameters for basic connection. 
                       ->Int
+                      -- ^ number of stripes
                       ->NominalDiffTime
+                      -- ^ idleTime for each resource when not using.
                       ->Int
+                      -- ^ maximum number of resources.
                       ->IO (Pool TCPConnection)
 createConnectionPool
   ConnParams

@@ -3,6 +3,7 @@
 --
 -- This source code is distributed under the terms of a MIT license,
 -- found in the LICENSE file.
+----------------------------------------------------------------------------
 
 {-# LANGUAGE BlockArguments             #-}
 {-# LANGUAGE CPP                        #-}
@@ -19,13 +20,14 @@
 {-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE NamedFieldPuns             #-}
 
+-- | This module provides implementation of user's API
+--
+
 module ClickHouseDriver.Core.Client
-  ( query,
+  ( -- * Data Fetch and Insert
+    query,
     queryWithInfo,
     deploySettings,
-    client,
-    defaultClient,
-    closeClient,
     insertMany,
     insertOneRow,
     ping,
@@ -33,6 +35,11 @@ module ClickHouseDriver.Core.Client
     ClickHouseDriver.Core.Client.fetch,
     fetchWithInfo,
     execute,
+    -- * Communication
+    client,
+    defaultClient,
+    closeClient,
+    -- * Connection pool
     defaultClientPool,
     createClient,
     createClientPool
@@ -116,7 +123,7 @@ _DEFAULT_DATABASE =  "default"
 _DEFAULT_COMPRESSION_SETTING :: Bool
 _DEFAULT_COMPRESSION_SETTING =  False
 
-
+-- | GADT 
 data Query a where
   FetchData :: String
                -- ^ SQL statement such as "SELECT * FROM table"
@@ -151,7 +158,8 @@ class Resource a where
   client :: Either String a->IO(Env () w)
             -- ^ Either wrong message of resource with type a
 
-fetchData :: State Query-> BlockedFetch Query -> IO ()
+-- | fetch data
+fetchData :: State Query->BlockedFetch Query->IO ()
 fetchData (CKResource tcpconn)  fetch = do
   let (queryStr, var) = case fetch of
         BlockedFetch (FetchData q) var' -> (C8.pack q, var')
@@ -251,7 +259,10 @@ fetchWithInfo :: String->GenHaxl u w (Either String CKResult)
 fetchWithInfo = dataFetch . FetchData
 
 -- | fetch data only
-fetch :: String->GenHaxl u w (Either String (Vector (Vector ClickhouseType)))
+fetch :: String
+        -- ^ SQL SELECT command
+       ->GenHaxl u w (Either String (Vector (Vector ClickhouseType)))
+        -- ^ result wrapped in Haxl monad for other tasks run with concurrency.
 fetch str = do
   result_with_info <- fetchWithInfo str
   case result_with_info of
@@ -302,7 +313,13 @@ insertMany source cmd items = do
       withResource pool $ \tcp->do
         processInsertQuery tcp (C8.pack cmd) Nothing items
 
-insertOneRow :: Env () w->String->[ClickhouseType]->IO(BS.ByteString)
+insertOneRow :: Env () w
+              ->String
+              -- ^ SQL command
+              ->[ClickhouseType]
+              -- ^ a row of local clickhouse data type to be serialize and insert. 
+              ->IO(BS.ByteString)
+              -- ^ The result bytestring indicate success or failure.
 insertOneRow source cmd items = insertMany source cmd [items]
 
 -- | ping pong 
