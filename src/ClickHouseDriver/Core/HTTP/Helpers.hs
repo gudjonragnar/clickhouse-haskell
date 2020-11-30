@@ -69,8 +69,7 @@ genURL HttpConnection {
            writeIn $ show port   
            writeIn "/"
            if cmd == "ping" then return () else writeIn "?query="
-           writeIn $ dbUrl db
-         let res = basicUrl ++ NE.encode cmd
+         let res = basicUrl ++ NE.encode cmd ++ dbUrl db
          return res
 
 -- | serialize column type into sql string
@@ -90,5 +89,5 @@ toStr' (CKTuple arr) = "(" ++ (toStr $ toList arr) ++ ")"
 toStr' CKNull = "null"
 toStr' _ = error "unsupported writing type"
 
-dbUrl :: (Maybe String) -> String
-dbUrl = fromMaybe "" . fmap ("?database=" ++) 
+dbUrl :: Maybe String -> String
+dbUrl = maybe "" ("&database=" ++) 

@@ -24,7 +24,7 @@ type Cmd = String
 
 type Haxl a = GenHaxl () a
 
-data Format = CSV | JSON | TUPLE
+data Format = CSV | JSON | TUPLE | PRETTY
     deriving Eq
 
 data HttpParams 

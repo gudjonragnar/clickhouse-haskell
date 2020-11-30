@@ -26,6 +26,7 @@ module ClickHouseDriver.Core.HTTP.Client
     getByteString,
     getJSON,
     getText,
+    getPretty,
     getTextM,
     getJsonM,
     insertOneRow,
@@ -95,6 +96,7 @@ data HttpClient a where
   FetchJSON :: String -> HttpClient BS.ByteString
   FetchCSV :: String -> HttpClient BS.ByteString
   FetchText :: String -> HttpClient BS.ByteString
+  FetchPretty :: String -> HttpClient BS.ByteString
   Ping :: HttpClient BS.ByteString
 
 deriving instance Show (HttpClient a)
@@ -109,6 +111,7 @@ instance Hashable (HttpClient a) where
   hashWithSalt salt (FetchByteString cmd) = hashWithSalt salt cmd
   hashWithSalt salt (FetchJSON cmd) = hashWithSalt salt cmd
   hashWithSalt salt (FetchCSV cmd) = hashWithSalt salt cmd
+  hashWithSalt salt (FetchPretty cmd) = hashWithSalt salt cmd
   hashWithSalt salt Ping = hashWithSalt salt ("ok"::BS.ByteString)
 
 instance DataSourceName HttpClient where
@@ -146,6 +149,7 @@ fetchData (settings) fetches = do
   let (queryWithType, var) = case fetches of
         BlockedFetch (FetchJSON query) var' -> (query ++ " FORMAT JSON", var')
         BlockedFetch (FetchCSV query) var' -> (query ++ " FORMAT CSV", var')
+        BlockedFetch (FetchPretty query) var' -> (query ++ " FORMAT Pretty", var')
         BlockedFetch (FetchByteString query) var' -> (query, var')
         BlockedFetch Ping var' -> ("ping", var')
   e <- Control.Exception.try $ do
@@ -170,12 +174,19 @@ fetchData (settings) fetches = do
 getByteString :: String -> GenHaxl u w BS.ByteString
 getByteString = dataFetch . FetchByteString
 
+getPrettyByteString :: String -> GenHaxl u w BS.ByteString
+getPrettyByteString = dataFetch . FetchPretty
+
 getText :: String -> GenHaxl u w T.Text
 getText cmd = fmap decodeUtf8 (getByteString cmd)
 
 -- | Fetch data from ClickHouse client in the JSON format.
 getJSON :: String -> GenHaxl u w JSONResult
 getJSON cmd = fmap extract (dataFetch $ FetchJSON cmd)
+
+-- | Fetch data from ClickHouse client in the Pretty format
+getPretty :: String -> GenHaxl u w T.Text
+getPretty cmd = fmap decodeUtf8 (getPrettyByteString cmd)
 
 -- | Fetch data from Clickhouse client with commands warped in a Traversable monad.
 getTextM :: (Monad m, Traversable m) => m String -> GenHaxl u w (m T.Text)
